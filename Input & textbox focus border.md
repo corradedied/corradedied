@@ -1,19 +1,10 @@
-### Input/textbox focus border
+Good catch, and you're right that it wasn't working as a queue.
 
-`TextBox` elements (main `Input`, and the ColorPicker's Hue/RGB boxes) now tween their `UIStroke.Color` between `OutlineColor` → `AccentColor` on `Focused`/`FocusLost`, using the existing `Library.TweenInfo` (0.1s).
+`MaxNotifications` defaults to 10, and the loop fires all 15 `Notify()` calls in the same frame with nothing yielding between them. The old code inserted each new notification then immediately destroyed the oldest one past the cap - so 1 through 5 got created and torn down before a single frame ever rendered. `NotificationQueue` was really just a hard concurrency cap with instant eviction, not a queue.
 
-Text inputs previously had no visual acknowledgment of focus state beyond the blinking cursor — easy to lose track of which box you're typing in, especially with several stacked in a groupbox. Reusing `AccentColor`/`Library.TweenInfo` ties it to the same visual language already used for toggles/sliders instead of introducing a new color or timing.
+I've reworked it so overflow notifications go into a `PendingNotifications` list instead of spawning (and getting destroyed) immediately. When an active notification expires and frees a slot, the next pending one gets spawned. Your test case now shows 1-10 right away, then 11-15 roll in one at a time as each of the first ten times out.
 
-**Why is this not behind an `Animations` flag?** that table only gates larger structural transitions (window show/hide, tab switching, dropdown expand) where there's a meaningful "instant" fallback state to snap to. This is a one-property color tween on a native input event, same class as the existing unconditional hover/toggle tweens (e.g. `Toggle:Display`) — not a distinct animation sequence worth its own opt-out.
+On the yielding concern - I looked through the call path and don't see an actual coroutine yield in `SetMaxNotifications` or the eviction logic; `Destroy()` only uses non-blocking tweens and `task.delay`. If you saw something specific yielding, let me know where and I'll take another look.
 
-### Dropdown & menu item hovering
-
-**What changed:** Added hover tweens (`Library.TweenInfo`) to the Dropdown value list, the KeyPicker's mode-select buttons, and the ColorPicker's right-click menu (Copy/Paste color, Copy Hex, Copy RGB) — background and text transparency shift on `MouseEnter`/`MouseLeave`.
-
-**Why:** These list-style menu items had no hover feedback, unlike buttons and checkboxes elsewhere in the library. Same tween timing as the checkbox/toggle hover keeps selecting from any list feeling consistent across the UI.
-
-
-
-# PR
-Title:
-feat: input borders, dropdown list option tween, and add selection tweens for other menus
+With actual queuing in place, does that change your view on keeping `SetMaxNotifications`, or do you still think it's not worth having?
+<img width="272" height="1072" alt="ezgif-4426fec2c102c2f8" src="https://github.com/user-attachments/assets/e3407cb9-c0c6-4e53-9014-fc47f42a70f8" />
